@@ -75,7 +75,7 @@ const joinBase = (base: string, fileName: string): string => {
   return `${normalizedBase}${fileName}`;
 };
 
-const INLINE_PLACEHOLDER = "__VITE_SW_CACHER_INLINE__";
+const INLINE_PLACEHOLDER = "/*__VITE_SW_CACHER_INLINE__*/";
 
 const collectStaticUrls = (
   bundle: OutputBundle,
