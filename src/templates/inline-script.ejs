@@ -1,0 +1,8 @@
+(() => {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register(<%- swUrlJson %>).catch((error) => {
+      console.warn("[vite-sw-cacher-plugin] SW registration failed", error);
+    });
+  });
+})();

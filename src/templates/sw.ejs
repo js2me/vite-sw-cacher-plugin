@@ -1,0 +1,109 @@
+const CACHE_NAME = <%- cacheNameJson %>;
+const MAX_AGE_MS = <%- ttlMs %>;
+const MAX_ITEMS = <%- maxItems %>;
+const EXTENSIONS = <%- extensionsJson %>;
+const URL_PATTERN = <%- urlPatternSource %>;
+
+self.addEventListener("install", () => self.skipWaiting());
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(cleanUpCache().then(() => self.clients.claim()));
+});
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (!shouldHandleRequest(request)) return;
+
+  event.respondWith(handleRequest(request));
+});
+
+const shouldHandleRequest = (request) => {
+  if (request.method !== "GET") return false;
+  const url = request.url;
+  return matchesPattern(url) && matchesExtension(url);
+};
+
+const matchesPattern = (url) => {
+  if (!URL_PATTERN) return true;
+  return URL_PATTERN.test(url);
+};
+
+const matchesExtension = (url) => {
+  if (!EXTENSIONS.length) return true;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return EXTENSIONS.some((ext) => pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+};
+
+const handleRequest = async (request) => {
+  try {
+    const response = await fetch(request);
+
+    if (response && response.ok) {
+      await putInCache(request, response);
+      return response;
+    }
+
+    if (response && response.status === 404) {
+      const cached = await caches.match(request);
+      return cached || response;
+    }
+
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    throw error;
+  }
+};
+
+const putInCache = async (request, response) => {
+  const cache = await caches.open(CACHE_NAME);
+  const headers = new Headers(response.headers);
+  headers.set("sw-cache-time", Date.now().toString());
+  const body = await response.clone().arrayBuffer();
+  const responseToCache = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+
+  await cache.put(request, responseToCache);
+  limitCacheSize().catch(() => undefined);
+};
+
+const cleanUpCache = async () => {
+  if (MAX_AGE_MS <= 0) return;
+  const cache = await caches.open(CACHE_NAME);
+  const keys = await cache.keys();
+  const now = Date.now();
+
+  for (const request of keys) {
+    const response = await cache.match(request);
+    if (!response) continue;
+
+    const storedTime = response.headers.get("sw-cache-time");
+    const dateHeader = response.headers.get("date");
+    const timestamp = storedTime ? Number(storedTime) : dateHeader ? new Date(dateHeader).getTime() : NaN;
+
+    if (!Number.isFinite(timestamp)) continue;
+    if (now - timestamp > MAX_AGE_MS) {
+      await cache.delete(request);
+    }
+  }
+};
+
+const limitCacheSize = async () => {
+  if (MAX_ITEMS <= 0) return;
+  const cache = await caches.open(CACHE_NAME);
+  const keys = await cache.keys();
+
+  if (keys.length <= MAX_ITEMS) return;
+  const itemsToDelete = keys.slice(0, keys.length - MAX_ITEMS);
+  for (const request of itemsToDelete) {
+    await cache.delete(request);
+  }
+};
