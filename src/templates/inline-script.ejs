@@ -1,8 +1,24 @@
 (() => {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register(<%- swUrlJson %>).catch((error) => {
-      console.warn("[vite-sw-cacher-plugin] SW registration failed", error);
-    });
+    <% if (inlineSw) { %>
+    const swCode = <%- swCodeJson %>;
+    const blob = new Blob([swCode], { type: "text/javascript" });
+    const swUrl = URL.createObjectURL(blob);
+    navigator.serviceWorker
+      .register(swUrl)
+      .catch((error) => {
+        console.warn("[vite-sw-cacher-plugin] SW registration failed", error);
+      })
+      .finally(() => {
+        URL.revokeObjectURL(swUrl);
+      });
+    <% } else { %>
+    navigator.serviceWorker
+      .register(<%- swUrlJson %>)
+      .catch((error) => {
+        console.warn("[vite-sw-cacher-plugin] SW registration failed", error);
+      });
+    <% } %>
   });
 })();

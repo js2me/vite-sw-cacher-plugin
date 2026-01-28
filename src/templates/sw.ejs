@@ -4,6 +4,7 @@ const MAX_ITEMS = <%- maxItems %>;
 const EXTENSIONS = <%- extensionsJson %>;
 const ALLOWED_CONTENT_TYPES = <%- allowedContentTypesJson %>;
 const URL_PATTERN = <%- urlPatternSource %>;
+const HTML_FALLBACK_KEY = "__sw-cacher-html-fallback__";
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -48,6 +49,12 @@ const matchesContentType = (response) => {
   return ALLOWED_CONTENT_TYPES.includes(contentType);
 };
 
+const isNavigationRequest = (request) => {
+  if (request.mode === "navigate") return true;
+  const accept = request.headers.get("accept") || "";
+  return accept.includes("text/html");
+};
+
 const handleRequest = async (request) => {
   try {
     const response = await fetch(request);
@@ -58,12 +65,18 @@ const handleRequest = async (request) => {
       if (shouldCache) {
         await putInCache(request, response);
       }
+      await maybeStoreHtmlFallback(response);
       return response;
     }
 
     if (response && response.status === 404) {
       const cached = await caches.match(request);
-      return cached || response;
+      if (cached) return cached;
+      if (isNavigationRequest(request)) {
+        const fallback = await getHtmlFallback();
+        if (fallback) return fallback;
+      }
+      return response;
     }
 
     return response;
@@ -87,6 +100,28 @@ const putInCache = async (request, response) => {
 
   await cache.put(request, responseToCache);
   limitCacheSize().catch(() => undefined);
+};
+
+const maybeStoreHtmlFallback = async (response) => {
+  if (!matchesContentType(response)) return;
+  const header = response.headers.get("content-type") || "";
+  const contentType = header.split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "text/html") return;
+  const cache = await caches.open(CACHE_NAME);
+  const headers = new Headers(response.headers);
+  headers.set("sw-cache-time", Date.now().toString());
+  const body = await response.clone().arrayBuffer();
+  const responseToCache = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+  await cache.put(HTML_FALLBACK_KEY, responseToCache);
+};
+
+const getHtmlFallback = async () => {
+  const cache = await caches.open(CACHE_NAME);
+  return cache.match(HTML_FALLBACK_KEY);
 };
 
 const cleanUpCache = async () => {

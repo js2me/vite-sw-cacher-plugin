@@ -35,6 +35,7 @@ export default defineConfig({
       ttl: 24 * 60 * 60 * 1000,
       maxItemsCount: 200,
       cacheName: "vite-sw-cacher-plugin",
+      inlineSw: false,
     }),
   ],
 });
@@ -47,3 +48,4 @@ export default defineConfig({
 - `ttl?`: время жизни в мс, по умолчанию 24 часа.
 - `maxItemsCount?`: максимум кэша. По умолчанию `кол-во статичных файлов из Vite * 2`.
 - `cacheName?`: имя группы кешей, по умолчанию `vite-sw-cacher-plugin`.
+- `inlineSw?`: вшивает SW в инлайн-скрипт через Blob URL (может быть ограничено CSP/браузером).

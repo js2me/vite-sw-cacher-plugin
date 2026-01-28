@@ -12,6 +12,7 @@ export interface ViteSwCacherPluginOptions {
   ttl?: number;
   maxItemsCount?: number;
   cacheName?: string;
+  inlineSw?: boolean;
 }
 
 const DEFAULT_EXTENSIONS = [
@@ -64,6 +65,19 @@ const countStaticOutputs = (bundle: OutputBundle, extensions: string[]): number 
 const joinBase = (base: string, fileName: string): string => {
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   return `${normalizedBase}${fileName}`;
+};
+
+const injectScriptIntoHtml = (html: string, script: string): string => {
+  const tag = `<script>${script}</script>`;
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${tag}</head>`);
+  }
+  return `${html}${tag}`;
+};
+
+const toHtmlString = (source: OutputAsset["source"]): string => {
+  if (typeof source === "string") return source;
+  return new TextDecoder().decode(source);
 };
 
 const renderTemplate = (template: string, data: Record<string, unknown>): string =>
@@ -123,9 +137,11 @@ export const viteSwCacherPlugin = (
       resolvedConfig = config;
     },
     async transformIndexHtml(html) {
+      if (options.inlineSw) return html;
       const base = resolvedConfig?.base ?? "/";
       const swUrl = joinBase(base, swFileName);
       const inlineScript = renderTemplate(inlineScriptTemplate, {
+        inlineSw: false,
         swUrlJson: JSON.stringify(swUrl),
       });
       const minifiedInlineScript = await minifyScript(inlineScript);
@@ -148,6 +164,7 @@ export const viteSwCacherPlugin = (
       const maxItems =
         options.maxItemsCount ?? staticCount * 2;
       const cacheName = options.cacheName ?? DEFAULT_CACHE_NAME;
+      const inlineSw = options.inlineSw ?? false;
 
       const swSource = await buildServiceWorkerSource({
         cacheName,
@@ -156,6 +173,22 @@ export const viteSwCacherPlugin = (
         extensions,
         pattern: options.pattern,
       });
+
+      if (inlineSw) {
+        const inlineScript = renderTemplate(inlineScriptTemplate, {
+          inlineSw: true,
+          swCodeJson: JSON.stringify(swSource),
+        });
+        const minifiedInlineScript = await minifyScript(inlineScript);
+
+        for (const item of Object.values(bundle)) {
+          if (item.type !== "asset") continue;
+          if (!item.fileName.toLowerCase().endsWith(".html")) continue;
+          const html = toHtmlString(item.source);
+          item.source = injectScriptIntoHtml(html, minifiedInlineScript);
+        }
+        return;
+      }
 
       this.emitFile({
         type: "asset",

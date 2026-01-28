@@ -1,6 +1,6 @@
 {
   "name": "vite-sw-cacher-plugin",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Vite 7 plugin that injects a SW cacher",
   "type": "module",
   "author": {
