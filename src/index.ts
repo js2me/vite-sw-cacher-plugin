@@ -7,12 +7,19 @@ import swTemplate from "./templates/sw.ejs";
 import inlineScriptTemplate from "./templates/inline-script.ejs";
 
 export interface ViteSwCacherPluginOptions {
+  /** Массив расширений (пример: [".js", ".css"]) */
   extensions?: string[];
+  /** URL-паттерн со * (пример: "*vk.com*") */
   pattern?: string;
+  /** TTL в мс (пример: 24 * 60 * 60 * 1000) */
   ttl?: number;
-  maxItemsCount?: number;
+  /** Лимит элементов кэша (пример: 200) */
+  maxItemsCount?: number | ((staticCount: number) => number); 
+  /** Имя кеша (пример: "vite-sw-cacher-plugin") */
   cacheName?: string;
+  /** Инлайн SW через Blob (пример: true) */
   inlineSw?: boolean;
+  /** Лениво подгружать статику (пример: true) */
   lazyPreload?: boolean;
 }
 
@@ -67,6 +74,8 @@ const joinBase = (base: string, fileName: string): string => {
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   return `${normalizedBase}${fileName}`;
 };
+
+const INLINE_PLACEHOLDER = "__VITE_SW_CACHER_INLINE__";
 
 const collectStaticUrls = (
   bundle: OutputBundle,
@@ -155,7 +164,18 @@ export const viteSwCacherPlugin = (
       resolvedConfig = config;
     },
     async transformIndexHtml(html) {
-      if (options.inlineSw || options.lazyPreload) return html;
+      if (options.inlineSw || options.lazyPreload) {
+        return {
+          html,
+          tags: [
+            {
+              tag: "script",
+              injectTo: "head",
+              children: INLINE_PLACEHOLDER,
+            },
+          ],
+        };
+      }
       const base = resolvedConfig?.base ?? "/";
       const swUrl = joinBase(base, swFileName);
       const inlineScript = renderTemplate(inlineScriptTemplate, {
@@ -182,7 +202,9 @@ export const viteSwCacherPlugin = (
       const staticCount = countStaticOutputs(bundle, extensions);
       const ttlMs = options.ttl ?? DEFAULT_TTL_MS;
       const maxItems =
-        options.maxItemsCount ?? staticCount * 2;
+        typeof options.maxItemsCount === 'function' ?
+          options.maxItemsCount(staticCount) :
+          options.maxItemsCount ?? staticCount * 2;
       const cacheName = options.cacheName ?? DEFAULT_CACHE_NAME;
       const inlineSw = options.inlineSw ?? false;
       const lazyPreload = options.lazyPreload ?? false;
@@ -211,7 +233,10 @@ export const viteSwCacherPlugin = (
           if (item.type !== "asset") continue;
           if (!item.fileName.toLowerCase().endsWith(".html")) continue;
           const html = toHtmlString(item.source);
-          item.source = injectScriptIntoHtml(html, minifiedInlineScript);
+          const updatedHtml = html.includes(INLINE_PLACEHOLDER)
+            ? html.replace(INLINE_PLACEHOLDER, minifiedInlineScript)
+            : injectScriptIntoHtml(html, minifiedInlineScript);
+          item.source = updatedHtml;
         }
         if (!inlineSw) {
           this.emitFile({
