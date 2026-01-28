@@ -37,6 +37,9 @@ export default defineConfig({
       cacheName: "vite-sw-cacher-plugin",
       inlineSw: false,
       lazyPreload: true,
+      lazyPreloadConcurrency: 3,
+      lazyPreloadBatchDelayMs: 120,
+      lazyPreloadPriorityExtensions: [".js", ".css"],
     }),
   ],
 });
@@ -51,3 +54,6 @@ export default defineConfig({
 - `cacheName?`: имя группы кешей, по умолчанию `vite-sw-cacher-plugin`.
 - `inlineSw?`: вшивает SW в инлайн-скрипт через Blob URL (может быть ограничено CSP/браузером).
 - `lazyPreload?`: лениво подгружает все статичные файлы из сборки после `load`.
+- `lazyPreloadConcurrency?`: максимум параллельных загрузок, по умолчанию `3`.
+- `lazyPreloadBatchDelayMs?`: пауза между пачками загрузок, по умолчанию `120`.
+- `lazyPreloadPriorityExtensions?`: приоритетные расширения (по умолчанию `.js`, `.css`).

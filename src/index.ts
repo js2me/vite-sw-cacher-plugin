@@ -21,6 +21,12 @@ export interface ViteSwCacherPluginOptions {
   inlineSw?: boolean;
   /** Лениво подгружать статику (пример: true) */
   lazyPreload?: boolean;
+  /** Макс. параллельных загрузок (пример: 4) */
+  lazyPreloadConcurrency?: number;
+  /** Пауза между пачками, мс (пример: 50) */
+  lazyPreloadBatchDelayMs?: number;
+  /** Приоритетные расширения для preload (пример: [".js", ".css"]) */
+  lazyPreloadPriorityExtensions?: string[];
 }
 
 const DEFAULT_EXTENSIONS = [
@@ -43,6 +49,7 @@ const DEFAULT_EXTENSIONS = [
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_CACHE_NAME = "vite-sw-cacher-plugin";
 const DEFAULT_SW_FILE_NAME = "sw-cacher.js";
+const DEFAULT_LAZY_PRELOAD_PRIORITY_EXTENSIONS = [".js", ".css"];
 
 const normalizeExtensions = (extensions?: string[]): string[] => {
   const list = extensions?.length ? extensions : DEFAULT_EXTENSIONS;
@@ -81,8 +88,10 @@ const collectStaticUrls = (
   bundle: OutputBundle,
   base: string,
   swFileName: string,
+  priorityExtensions: string[],
 ): string[] => {
   const urls: string[] = [];
+  const prioritySet = new Set(priorityExtensions.map((ext) => ext.toLowerCase()));
   for (const item of Object.values(bundle)) {
     const fileName = item.fileName;
     const lower = fileName.toLowerCase();
@@ -91,7 +100,15 @@ const collectStaticUrls = (
     if (lower === swFileName.toLowerCase()) continue;
     urls.push(joinBase(base, fileName));
   }
-  return Array.from(new Set(urls));
+  const unique = Array.from(new Set(urls));
+  const prioritized: string[] = [];
+  const rest: string[] = [];
+  for (const url of unique) {
+    const lower = url.toLowerCase();
+    const isPriority = Array.from(prioritySet).some((ext) => lower.endsWith(ext));
+    (isPriority ? prioritized : rest).push(url);
+  }
+  return prioritized.concat(rest);
 };
 
 const injectScriptIntoHtml = (html: string, script: string): string => {
@@ -212,6 +229,11 @@ export const viteSwCacherPlugin = (
       const cacheName = options.cacheName ?? DEFAULT_CACHE_NAME;
       const inlineSw = options.inlineSw ?? false;
       const lazyPreload = options.lazyPreload ?? false;
+      const lazyPreloadConcurrency = options.lazyPreloadConcurrency ?? 3;
+      const lazyPreloadBatchDelayMs = options.lazyPreloadBatchDelayMs ?? 120;
+      const lazyPreloadPriorityExtensions = normalizeExtensions(
+        options.lazyPreloadPriorityExtensions ?? DEFAULT_LAZY_PRELOAD_PRIORITY_EXTENSIONS,
+      );
       const base = resolvedConfig?.base ?? "/";
 
       const swSource = await buildServiceWorkerSource({
@@ -223,13 +245,15 @@ export const viteSwCacherPlugin = (
       });
 
       if (inlineSw || lazyPreload) {
-        const assets = collectStaticUrls(bundle, base, swFileName);
+        const assets = collectStaticUrls(bundle, base, swFileName, lazyPreloadPriorityExtensions);
         const inlineScript = renderTemplate(inlineScriptTemplate, {
           inlineSw,
           lazyPreload,
           swUrlJson: JSON.stringify(joinBase(base, swFileName)),
           swCodeJson: JSON.stringify(swSource),
           assetsJson: JSON.stringify(assets),
+          lazyPreloadConcurrency,
+          lazyPreloadBatchDelayMs,
         });
         const minifiedInlineScript = await minifyScript(inlineScript);
 
