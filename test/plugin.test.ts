@@ -16,6 +16,27 @@ const createHtmlAsset = (html: string) => ({
   source: html,
 });
 
+const getTransformHandler = (plugin: any) => {
+  const transform = plugin.transformIndexHtml;
+  if (typeof transform === "function") return transform;
+  if (transform && typeof transform.handler === "function") return transform.handler;
+  return undefined;
+};
+
+const applyTransformResult = (html: string, result: any): string => {
+  if (!result) return html;
+  if (typeof result === "string") return result;
+  const tags = result.tags ?? [];
+  if (!tags.length) return result.html ?? html;
+  const injected = tags
+    .map((tag: any) => `<${tag.tag}>${tag.children ?? ""}</${tag.tag}>`)
+    .join("");
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${injected}</head>`);
+  }
+  return `${html}${injected}`;
+};
+
 const getAssetsFromHtml = (html: string): string[] => {
   const match = html.match(/const assets=([^;]+);/);
   if (!match) return [];
@@ -31,7 +52,8 @@ describe("vite-sw-cacher-plugin", () => {
     const plugin = viteSwCacherPlugin();
     plugin.configResolved?.({ base: "/" } as any);
 
-    const result = await plugin.transformIndexHtml?.("<html><head></head><body></body></html>");
+    const handler = getTransformHandler(plugin);
+    const result = await handler?.("<html><head></head><body></body></html>");
     expect(result).toBeTruthy();
     const tags = (result as any).tags;
     expect(Array.isArray(tags)).toBe(true);
@@ -42,7 +64,8 @@ describe("vite-sw-cacher-plugin", () => {
     const plugin = viteSwCacherPlugin();
     plugin.configResolved?.({ base: "/app/" } as any);
 
-    const result = await plugin.transformIndexHtml?.("<html><head></head><body></body></html>");
+    const handler = getTransformHandler(plugin);
+    const result = await handler?.("<html><head></head><body></body></html>");
     const tags = (result as any).tags;
     expect(tags[0].children).toContain("/app/sw-cacher.js");
   });
@@ -51,7 +74,8 @@ describe("vite-sw-cacher-plugin", () => {
     const plugin = viteSwCacherPlugin({ inlineSw: true });
     plugin.configResolved?.({ base: "/" } as any);
 
-    const result = await plugin.transformIndexHtml?.("<html><head></head><body></body></html>");
+    const handler = getTransformHandler(plugin);
+    const result = await handler?.("<html><head></head><body></body></html>");
     const tags = (result as any).tags;
     expect(tags[0].children).toContain("__VITE_SW_CACHER_INLINE__");
   });
@@ -155,7 +179,8 @@ describe("vite-sw-cacher-plugin", () => {
     const plugin = viteSwCacherPlugin({ lazyPreload: false });
     plugin.configResolved?.({ base: "/" } as any);
 
-    const result = await plugin.transformIndexHtml?.("<html><head></head><body></body></html>");
+    const handler = getTransformHandler(plugin);
+    const result = await handler?.("<html><head></head><body></body></html>");
     const tags = (result as any).tags;
     expect(tags[0].children).toContain("serviceWorker");
     expect(tags[0].children).not.toContain("fetch(");
@@ -178,6 +203,32 @@ describe("vite-sw-cacher-plugin", () => {
     const outputHtml = String(htmlAsset.source);
     expect(outputHtml).not.toContain("__VITE_SW_CACHER_INLINE__");
     expect(outputHtml).toContain("serviceWorker");
+  });
+
+  it("вставляет плейсхолдер и заменяет его финальным скриптом", async () => {
+    const plugin = viteSwCacherPlugin({ lazyPreload: true });
+    plugin.configResolved?.({ base: "/" } as any);
+
+    const originalHtml = "<html><head></head><body></body></html>";
+    const handler = getTransformHandler(plugin);
+    const transformResult = await handler?.(originalHtml);
+    const htmlWithPlaceholder = applyTransformResult(originalHtml, transformResult);
+
+    expect(htmlWithPlaceholder).toContain("__VITE_SW_CACHER_INLINE__");
+
+    const htmlAsset = createHtmlAsset(htmlWithPlaceholder);
+    const bundle: any = {
+      "index.html": htmlAsset,
+      "assets/main.js": { type: "chunk", fileName: "assets/main.js" },
+    };
+
+    const ctx = { emitFile: vi.fn() };
+    await plugin.generateBundle?.call(ctx as any, {}, bundle);
+
+    const outputHtml = String(htmlAsset.source);
+    expect(outputHtml).not.toContain("__VITE_SW_CACHER_INLINE__");
+    expect(outputHtml).toContain("serviceWorker");
+    expect(outputHtml).toContain("fetch(");
   });
 
   it("работает при inlineSw и lazyPreload одновременно", async () => {

@@ -160,42 +160,46 @@ export const viteSwCacherPlugin = (
   return {
     name: "vite-sw-cacher-plugin",
     apply: "build",
+    enforce: "post",
     configResolved(config) {
       resolvedConfig = config;
     },
-    async transformIndexHtml(html) {
-      if (options.inlineSw || options.lazyPreload) {
+    transformIndexHtml: {
+      order: "post",
+      async handler(html) {
+        if (options.inlineSw || options.lazyPreload) {
+          return {
+            html,
+            tags: [
+              {
+                tag: "script",
+                injectTo: "head",
+                children: INLINE_PLACEHOLDER,
+              },
+            ],
+          };
+        }
+        const base = resolvedConfig?.base ?? "/";
+        const swUrl = joinBase(base, swFileName);
+        const inlineScript = renderTemplate(inlineScriptTemplate, {
+          inlineSw: false,
+          lazyPreload: false,
+          swUrlJson: JSON.stringify(swUrl),
+          assetsJson: "[]",
+        });
+        const minifiedInlineScript = await minifyScript(inlineScript);
+
         return {
           html,
           tags: [
             {
               tag: "script",
               injectTo: "head",
-              children: INLINE_PLACEHOLDER,
+              children: minifiedInlineScript,
             },
           ],
         };
-      }
-      const base = resolvedConfig?.base ?? "/";
-      const swUrl = joinBase(base, swFileName);
-      const inlineScript = renderTemplate(inlineScriptTemplate, {
-        inlineSw: false,
-        lazyPreload: false,
-        swUrlJson: JSON.stringify(swUrl),
-        assetsJson: "[]",
-      });
-      const minifiedInlineScript = await minifyScript(inlineScript);
-
-      return {
-        html,
-        tags: [
-          {
-            tag: "script",
-            injectTo: "head",
-            children: minifiedInlineScript,
-          },
-        ],
-      };
+      },
     },
     async generateBundle(_, bundle) {
       const extensions = normalizeExtensions(options.extensions);
