@@ -229,8 +229,8 @@ export const viteSwCacherPlugin = (
       const cacheName = options.cacheName ?? DEFAULT_CACHE_NAME;
       const inlineSw = options.inlineSw ?? false;
       const lazyPreload = options.lazyPreload ?? false;
-      const lazyPreloadConcurrency = options.lazyPreloadConcurrency ?? 3;
-      const lazyPreloadBatchDelayMs = options.lazyPreloadBatchDelayMs ?? 120;
+      const lazyPreloadConcurrency = options.lazyPreloadConcurrency ?? 1;
+      const lazyPreloadBatchDelayMs = options.lazyPreloadBatchDelayMs ?? 1000;
       const lazyPreloadPriorityExtensions = normalizeExtensions(
         options.lazyPreloadPriorityExtensions ?? DEFAULT_LAZY_PRELOAD_PRIORITY_EXTENSIONS,
       );
