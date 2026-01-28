@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      ejs:
+        specifier: ^3.1.10
+        version: 3.1.10
+      terser:
+        specifier: ^5.36.0
+        version: 5.46.0
     devDependencies:
       '@types/ejs':
         specifier: ^3.1.5
@@ -14,15 +21,9 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.7
-      ejs:
-        specifier: ^3.1.10
-        version: 3.1.10
       rollup:
         specifier: ^4.0.0
         version: 4.57.0
-      terser:
-        specifier: ^5.36.0
-        version: 5.46.0
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)
