@@ -2,6 +2,7 @@ import type { OutputAsset, OutputBundle, OutputChunk } from "rollup";
 import type { Plugin, ResolvedConfig } from "vite";
 import ejs from "ejs";
 import { minify } from "terser";
+import { lookup as lookupMimeType } from "mime-types";
 import swTemplate from "./templates/sw.ejs";
 import inlineScriptTemplate from "./templates/inline-script.ejs";
 
@@ -88,12 +89,21 @@ const buildServiceWorkerSource = async (options: {
   const urlPatternSource = patternSource
     ? `new RegExp(${JSON.stringify(patternSource)})`
     : "null";
+  const allowedContentTypes = Array.from(
+    new Set(
+      options.extensions
+        .map((ext) => lookupMimeType(ext))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.toLowerCase()),
+    ),
+  );
 
   const source = renderTemplate(swTemplate, {
     cacheNameJson: JSON.stringify(options.cacheName),
     ttlMs: Math.max(0, options.ttlMs),
     maxItems: options.maxItems,
     extensionsJson: JSON.stringify(options.extensions),
+    allowedContentTypesJson: JSON.stringify(allowedContentTypes),
     urlPatternSource,
   });
 

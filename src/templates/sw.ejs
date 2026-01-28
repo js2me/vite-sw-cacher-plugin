@@ -2,6 +2,7 @@ const CACHE_NAME = <%- cacheNameJson %>;
 const MAX_AGE_MS = <%- ttlMs %>;
 const MAX_ITEMS = <%- maxItems %>;
 const EXTENSIONS = <%- extensionsJson %>;
+const ALLOWED_CONTENT_TYPES = <%- allowedContentTypesJson %>;
 const URL_PATTERN = <%- urlPatternSource %>;
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -20,7 +21,7 @@ self.addEventListener("fetch", (event) => {
 const shouldHandleRequest = (request) => {
   if (request.method !== "GET") return false;
   const url = request.url;
-  return matchesPattern(url) && matchesExtension(url);
+  return matchesPattern(url);
 };
 
 const matchesPattern = (url) => {
@@ -38,12 +39,25 @@ const matchesExtension = (url) => {
   }
 };
 
+const matchesContentType = (response) => {
+  if (!ALLOWED_CONTENT_TYPES.length) return false;
+  const header = response.headers.get("content-type");
+  if (!header) return false;
+  const contentType = header.split(";")[0]?.trim().toLowerCase();
+  if (!contentType) return false;
+  return ALLOWED_CONTENT_TYPES.includes(contentType);
+};
+
 const handleRequest = async (request) => {
   try {
     const response = await fetch(request);
 
     if (response && response.ok) {
-      await putInCache(request, response);
+      const shouldCache =
+        matchesExtension(request.url) || matchesContentType(response);
+      if (shouldCache) {
+        await putInCache(request, response);
+      }
       return response;
     }
 
