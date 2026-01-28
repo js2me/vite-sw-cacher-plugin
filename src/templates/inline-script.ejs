@@ -20,5 +20,19 @@
         console.warn("[vite-sw-cacher-plugin] SW registration failed", error);
       });
     <% } %>
+
+    <% if (lazyPreload) { %>
+    const preloadAssets = () => {
+      const assets = <%- assetsJson %>;
+      for (const url of assets) {
+        fetch(url, { credentials: "same-origin" }).catch(() => undefined);
+      }
+    };
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(preloadAssets);
+    } else {
+      setTimeout(preloadAssets, 0);
+    }
+    <% } %>
   });
 })();

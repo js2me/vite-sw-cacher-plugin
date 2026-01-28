@@ -13,6 +13,7 @@ export interface ViteSwCacherPluginOptions {
   maxItemsCount?: number;
   cacheName?: string;
   inlineSw?: boolean;
+  lazyPreload?: boolean;
 }
 
 const DEFAULT_EXTENSIONS = [
@@ -65,6 +66,23 @@ const countStaticOutputs = (bundle: OutputBundle, extensions: string[]): number 
 const joinBase = (base: string, fileName: string): string => {
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
   return `${normalizedBase}${fileName}`;
+};
+
+const collectStaticUrls = (
+  bundle: OutputBundle,
+  base: string,
+  swFileName: string,
+): string[] => {
+  const urls: string[] = [];
+  for (const item of Object.values(bundle)) {
+    const fileName = item.fileName;
+    const lower = fileName.toLowerCase();
+    if (lower.endsWith(".html")) continue;
+    if (lower.endsWith(".map")) continue;
+    if (lower === swFileName.toLowerCase()) continue;
+    urls.push(joinBase(base, fileName));
+  }
+  return Array.from(new Set(urls));
 };
 
 const injectScriptIntoHtml = (html: string, script: string): string => {
@@ -137,12 +155,14 @@ export const viteSwCacherPlugin = (
       resolvedConfig = config;
     },
     async transformIndexHtml(html) {
-      if (options.inlineSw) return html;
+      if (options.inlineSw || options.lazyPreload) return html;
       const base = resolvedConfig?.base ?? "/";
       const swUrl = joinBase(base, swFileName);
       const inlineScript = renderTemplate(inlineScriptTemplate, {
         inlineSw: false,
+        lazyPreload: false,
         swUrlJson: JSON.stringify(swUrl),
+        assetsJson: "[]",
       });
       const minifiedInlineScript = await minifyScript(inlineScript);
 
@@ -165,6 +185,8 @@ export const viteSwCacherPlugin = (
         options.maxItemsCount ?? staticCount * 2;
       const cacheName = options.cacheName ?? DEFAULT_CACHE_NAME;
       const inlineSw = options.inlineSw ?? false;
+      const lazyPreload = options.lazyPreload ?? false;
+      const base = resolvedConfig?.base ?? "/";
 
       const swSource = await buildServiceWorkerSource({
         cacheName,
@@ -174,10 +196,14 @@ export const viteSwCacherPlugin = (
         pattern: options.pattern,
       });
 
-      if (inlineSw) {
+      if (inlineSw || lazyPreload) {
+        const assets = collectStaticUrls(bundle, base, swFileName);
         const inlineScript = renderTemplate(inlineScriptTemplate, {
-          inlineSw: true,
+          inlineSw,
+          lazyPreload,
+          swUrlJson: JSON.stringify(joinBase(base, swFileName)),
           swCodeJson: JSON.stringify(swSource),
+          assetsJson: JSON.stringify(assets),
         });
         const minifiedInlineScript = await minifyScript(inlineScript);
 
@@ -186,6 +212,13 @@ export const viteSwCacherPlugin = (
           if (!item.fileName.toLowerCase().endsWith(".html")) continue;
           const html = toHtmlString(item.source);
           item.source = injectScriptIntoHtml(html, minifiedInlineScript);
+        }
+        if (!inlineSw) {
+          this.emitFile({
+            type: "asset",
+            fileName: swFileName,
+            source: swSource,
+          });
         }
         return;
       }

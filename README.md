@@ -36,6 +36,7 @@ export default defineConfig({
       maxItemsCount: 200,
       cacheName: "vite-sw-cacher-plugin",
       inlineSw: false,
+      lazyPreload: true,
     }),
   ],
 });
@@ -49,3 +50,4 @@ export default defineConfig({
 - `maxItemsCount?`: максимум кэша. По умолчанию `кол-во статичных файлов из Vite * 2`.
 - `cacheName?`: имя группы кешей, по умолчанию `vite-sw-cacher-plugin`.
 - `inlineSw?`: вшивает SW в инлайн-скрипт через Blob URL (может быть ограничено CSP/браузером).
+- `lazyPreload?`: лениво подгружает все статичные файлы из сборки после `load`.
