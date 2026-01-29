@@ -3,7 +3,8 @@ const MAX_AGE_MS = <%- ttlMs %>;
 const MAX_ITEMS = <%- maxItems %>;
 const EXTENSIONS = <%- extensionsJson %>;
 const ALLOWED_CONTENT_TYPES = <%- allowedContentTypesJson %>;
-const URL_PATTERN = <%- urlPatternSource %>;
+const URL_PATTERNS = <%- urlPatternSources %>;
+const EXCLUDE_URL_PATTERNS = <%- excludeUrlPatternSources %>;
 const HTML_FALLBACK_KEY = "__sw-cacher-html-fallback__";
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -22,12 +23,17 @@ self.addEventListener("fetch", (event) => {
 const shouldHandleRequest = (request) => {
   if (request.method !== "GET") return false;
   const url = request.url;
-  return matchesPattern(url);
+  return matchesPattern(url) && !matchesExcludePattern(url);
 };
 
 const matchesPattern = (url) => {
-  if (!URL_PATTERN) return true;
-  return URL_PATTERN.test(url);
+  if (!URL_PATTERNS || !URL_PATTERNS.length) return true;
+  return URL_PATTERNS.some((pattern) => pattern.test(url));
+};
+
+const matchesExcludePattern = (url) => {
+  if (!EXCLUDE_URL_PATTERNS || !EXCLUDE_URL_PATTERNS.length) return false;
+  return EXCLUDE_URL_PATTERNS.some((pattern) => pattern.test(url));
 };
 
 const matchesExtension = (url) => {

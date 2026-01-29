@@ -9,8 +9,10 @@ import inlineScriptTemplate from "./templates/inline-script.ejs";
 export interface ViteSwCacherPluginOptions {
   /** Массив расширений (пример: [".js", ".css"]) */
   extensions?: string[];
-  /** URL-паттерн со * (пример: "*vk.com*") */
-  pattern?: string;
+  /** URL-паттерны со * (пример: ["*vk.com*", "*example.com*"]) */
+  pattern?: string | string[];
+  /** Исключающие URL-паттерны со * (пример: ["*api.vk.com*"]) */
+  excludePattern?: string | string[];
   /** TTL в мс (пример: 24 * 60 * 60 * 1000) */
   ttl?: number;
   /** Лимит элементов кэша (пример: 200) */
@@ -60,6 +62,13 @@ const normalizeExtensions = (extensions?: string[]): string[] => {
   });
 
   return Array.from(new Set(normalized.filter(Boolean)));
+};
+
+const normalizePatterns = (pattern?: string | string[]): string[] => {
+  if (!pattern) return [];
+  const list = Array.isArray(pattern) ? pattern : [pattern];
+  const normalized = list.map((value) => value.trim()).filter(Boolean);
+  return Array.from(new Set(normalized));
 };
 
 const wildcardToRegexSource = (pattern: string): string => {
@@ -141,11 +150,16 @@ const buildServiceWorkerSource = async (options: {
   ttlMs: number;
   maxItems: number;
   extensions: string[];
-  pattern?: string;
+  patterns: string[];
+  excludePatterns: string[];
 }): Promise<string> => {
-  const patternSource = options.pattern ? wildcardToRegexSource(options.pattern) : null;
-  const urlPatternSource = patternSource
-    ? `new RegExp(${JSON.stringify(patternSource)})`
+  const patternSources = options.patterns.map(wildcardToRegexSource);
+  const urlPatternSources = patternSources.length
+    ? `[${patternSources.map((source) => `new RegExp(${JSON.stringify(source)})`).join(", ")}]`
+    : "null";
+  const excludePatternSources = options.excludePatterns.map(wildcardToRegexSource);
+  const excludeUrlPatternSources = excludePatternSources.length
+    ? `[${excludePatternSources.map((source) => `new RegExp(${JSON.stringify(source)})`).join(", ")}]`
     : "null";
   const allowedContentTypes = Array.from(
     new Set(
@@ -162,7 +176,8 @@ const buildServiceWorkerSource = async (options: {
     maxItems: options.maxItems,
     extensionsJson: JSON.stringify(options.extensions),
     allowedContentTypesJson: JSON.stringify(allowedContentTypes),
-    urlPatternSource,
+    urlPatternSources,
+    excludeUrlPatternSources,
   });
 
   return minifyScript(source);
@@ -220,6 +235,8 @@ export const viteSwCacherPlugin = (
     },
     async generateBundle(_, bundle) {
       const extensions = normalizeExtensions(options.extensions);
+      const patterns = normalizePatterns(options.pattern);
+      const excludePatterns = normalizePatterns(options.excludePattern);
       const staticCount = countStaticOutputs(bundle, extensions);
       const ttlMs = options.ttl ?? DEFAULT_TTL_MS;
       const maxItems =
@@ -241,7 +258,8 @@ export const viteSwCacherPlugin = (
         ttlMs,
         maxItems,
         extensions,
-        pattern: options.pattern,
+        patterns,
+        excludePatterns,
       });
 
       if (inlineSw || lazyPreload) {

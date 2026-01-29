@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { viteSwCacherPlugin } from "../src/index";
 
+vi.mock("terser", () => ({
+  minify: vi.fn(async (code: string) => ({ code })),
+}));
+
 vi.mock("../src/templates/sw.ejs", () => ({
-  default: "self.addEventListener(\"install\",()=>{});",
+  default:
+    "const URL_PATTERNS=<%- urlPatternSources %>;const EXCLUDE_URL_PATTERNS=<%- excludeUrlPatternSources %>;self.addEventListener(\"install\",()=>{});",
 }));
 
 vi.mock("../src/templates/inline-script.ejs", () => ({
@@ -134,6 +139,29 @@ describe("vite-sw-cacher-plugin", () => {
     expect(ctx.emitFile).toHaveBeenCalledWith(
       expect.objectContaining({ fileName: "sw-cacher.js" }),
     );
+  });
+
+  it("поддерживает pattern и excludePattern", async () => {
+    const plugin = viteSwCacherPlugin({
+      pattern: ["*vk.com*", "*example.com*"],
+      excludePattern: "*api.vk.com*",
+    });
+    plugin.configResolved?.({ base: "/" } as any);
+
+    const bundle: any = {
+      "assets/main.js": { type: "chunk", fileName: "assets/main.js" },
+    };
+
+    const ctx = { emitFile: vi.fn() };
+    await plugin.generateBundle?.call(ctx as any, {}, bundle);
+
+    const call = ctx.emitFile.mock.calls[0]?.[0];
+    const swSource = String(call?.source ?? "");
+    expect(swSource).toContain("URL_PATTERNS");
+    expect(swSource).toContain("EXCLUDE_URL_PATTERNS");
+    expect(swSource).toContain("vk\\\\.com");
+    expect(swSource).toContain("example\\\\.com");
+    expect(swSource).toContain("api\\\\.vk\\\\.com");
   });
 
   it("исключает .html, .map и sw-cacher.js из списка ассетов", async () => {
